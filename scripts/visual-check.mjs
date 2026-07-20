@@ -54,6 +54,11 @@ const streamResult = await streamResponse.json();
 if (streamResponse.status() !== 201 || streamResult.mode !== "demo" || !streamResult.stream?.id) {
   failures.push("stream lifecycle: demo preflight API failed");
 }
+const healthResponse = await desktopPage.request.get(`${baseUrl}/api/health`);
+const healthResult = await healthResponse.json();
+if (healthResponse.status() !== 200 || healthResult.status !== "ok" || healthResult.mode !== "demo") {
+  failures.push("health endpoint: demo readiness check failed");
+}
 
 await Promise.all([
   desktopPage.waitForURL("**/live/addis-after-dark"),
@@ -111,6 +116,6 @@ if (failures.length) {
 
 console.log(JSON.stringify({
   status: "passed",
-  checks: ["desktop home", "stream preflight API", "desktop live room", "like interaction", "chat interaction", "auth setup", "mobile home", "mobile studio"],
+  checks: ["desktop home", "health endpoint", "stream preflight API", "desktop live room", "like interaction", "chat interaction", "auth setup", "mobile home", "mobile studio"],
   screenshots: ["artifacts/home-desktop.png", "artifacts/live-room-desktop.png", "artifacts/auth-desktop.png", "artifacts/home-mobile.png", "artifacts/studio-mobile.png"],
 }, null, 2));

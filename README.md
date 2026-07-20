@@ -21,6 +21,7 @@ A production-shaped live-video web application with a responsive viewer/creator 
 - Supabase Auth, Postgres, and Realtime
 - Playwright Core for end-to-end browser verification
 - PGlite for isolated migration execution tests
+- GitHub Actions quality gates for every push and pull request
 
 ## Run locally
 
@@ -94,9 +95,12 @@ If `CHROMIUM_PATH` is omitted, the script asks `@sparticuz/chromium` for a compa
 | `/live/[id]` | Demo or database-backed live viewer room |
 | `/api/streams` | Discovery and authenticated stream creation |
 | `/api/streams/[id]/transition` | RLS-protected lifecycle transition |
+| `/api/health` | Deployment-safe application and database readiness |
 | `/inbox` | Notification and activity shell |
 | `/profile` | Creator profile and account state |
 
 ## Current boundary
 
 Milestone 2 provides the application backend, realtime collaboration, and a clean video-provider interface. Actual multi-viewer video delivery still needs a dedicated WebRTC/live-video provider and credentials. That integration should be milestone 3, followed by moderation automation, notifications, payments, and production observability.
+
+Every push to `main` and every pull request runs the quality workflow in `.github/workflows/quality.yml`.
