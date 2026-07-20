@@ -5,9 +5,12 @@ import { PGlite } from "@electric-sql/pglite";
 
 const migrationsDirectory = resolve("supabase/migrations");
 const migrationFiles = (await readdir(migrationsDirectory)).filter((file) => file.endsWith(".sql")).sort();
-if (migrationFiles.length !== 1) throw new Error(`Expected one foundation migration, found ${migrationFiles.length}.`);
+if (!migrationFiles.length) throw new Error("No database migrations found.");
 
-const sql = await readFile(resolve(migrationsDirectory, migrationFiles[0]), "utf8");
+const migrations = await Promise.all(migrationFiles.map(async (file) => ({
+  file,
+  sql: await readFile(resolve(migrationsDirectory, file), "utf8"),
+})));
 const db = new PGlite();
 
 await db.exec(`
@@ -24,7 +27,7 @@ await db.exec(`
   create publication supabase_realtime;
 `);
 
-await db.exec(sql);
+for (const migration of migrations) await db.exec(migration.sql);
 
 const userId = "5f6c4577-91a4-4c8f-97e6-fc6abf6cbc14";
 await db.query(
@@ -83,6 +86,6 @@ if (publication.rows[0]?.count !== 1) throw new Error("chat_messages was not add
 await db.close();
 console.log(JSON.stringify({
   status: "passed",
-  migration: migrationFiles[0],
+  migrations: migrationFiles,
   checks: ["schema parsed", "profile trigger", "valid lifecycle", "invalid lifecycle", "RLS coverage", "realtime publication"],
 }, null, 2));

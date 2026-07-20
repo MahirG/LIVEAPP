@@ -51,13 +51,23 @@ const streamResponse = await desktopPage.request.post(`${baseUrl}/api/streams`, 
   data: { title: "Browser verification live", topic: "Technology", language: "English" },
 });
 const streamResult = await streamResponse.json();
-if (streamResponse.status() !== 201 || streamResult.mode !== "demo" || !streamResult.stream?.id) {
-  failures.push("stream lifecycle: demo preflight API failed");
-}
 const healthResponse = await desktopPage.request.get(`${baseUrl}/api/health`);
 const healthResult = await healthResponse.json();
-if (healthResponse.status() !== 200 || healthResult.status !== "ok" || healthResult.mode !== "demo") {
-  failures.push("health endpoint: demo readiness check failed");
+const expectedMode = healthResult.mode;
+if (
+  healthResponse.status() !== 200
+  || healthResult.status !== "ok"
+  || !["demo", "connected"].includes(expectedMode)
+  || healthResult.services?.application !== "healthy"
+) {
+  failures.push("health endpoint: readiness check failed");
+}
+if (expectedMode === "demo") {
+  if (streamResponse.status() !== 201 || streamResult.mode !== "demo" || !streamResult.stream?.id) {
+    failures.push("stream lifecycle: demo preflight API failed");
+  }
+} else if (streamResponse.status() !== 401 || !streamResult.error) {
+  failures.push("stream lifecycle: connected API did not protect anonymous creation");
 }
 
 await Promise.all([
@@ -81,7 +91,14 @@ await desktopPage.screenshot({
 });
 await desktopPage.goto(`${baseUrl}/auth`, { waitUntil: "domcontentloaded" });
 await desktopPage.getByRole("heading", { name: "Show up as yourself. Stay in control." }).waitFor();
-if (!(await desktopPage.getByText("Backend connection ready").isVisible())) failures.push("auth: unconfigured setup state missing");
+if (expectedMode === "connected") {
+  await desktopPage.getByLabel("Email address").waitFor();
+  if (!(await desktopPage.getByRole("button", { name: "Email me a secure link" }).isVisible())) {
+    failures.push("auth: connected passwordless form missing");
+  }
+} else if (!(await desktopPage.getByText("Backend connection ready").isVisible())) {
+  failures.push("auth: unconfigured setup state missing");
+}
 await desktopPage.screenshot({
   path: resolve(artifacts, "auth-desktop.png"),
   animations: "disabled",
@@ -116,6 +133,7 @@ if (failures.length) {
 
 console.log(JSON.stringify({
   status: "passed",
+  mode: expectedMode,
   checks: ["desktop home", "health endpoint", "stream preflight API", "desktop live room", "like interaction", "chat interaction", "auth setup", "mobile home", "mobile studio"],
   screenshots: ["artifacts/home-desktop.png", "artifacts/live-room-desktop.png", "artifacts/auth-desktop.png", "artifacts/home-mobile.png", "artifacts/studio-mobile.png"],
 }, null, 2));

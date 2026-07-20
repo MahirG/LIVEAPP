@@ -35,14 +35,16 @@ npm run dev
 
 The app runs at `http://localhost:3000`. It automatically uses demo mode until valid Supabase settings are added.
 
-## Connect a dedicated Supabase project
+## Supabase backend
 
-Create or select a project dedicated to LIVEAPP. Do not point this migration at an unrelated production database.
+The dedicated `LIVEAPP` project (`vcyzgoiconxjmntoreto`, EU West) now has the complete schema, RLS policies, realtime publication, lifecycle triggers, and advisor hardening applied. Local and deployment environments still need their own browser-safe Project URL and publishable key; secret/service-role keys are not used by the app.
+
+To configure another environment or reproduce the database:
 
 1. Copy the Project URL and publishable key from the Supabase **Connect** dialog into `.env.local`.
-2. Link the CLI to the dedicated project.
-3. Inspect the pending migration with a dry run.
-4. Apply it when the target is confirmed.
+2. Link the CLI to the intended dedicated project.
+3. Inspect the pending migrations with a dry run.
+4. Apply them when the target is confirmed.
 
 ```bash
 npx supabase link --project-ref YOUR_PROJECT_REF
@@ -50,7 +52,7 @@ npx supabase db push --linked --dry-run
 npx supabase db push --linked
 ```
 
-The foundation migration is in `supabase/migrations/20260720203642_live_platform_foundation.sql`.
+Versioned migrations live in `supabase/migrations`. Generated application types in `src/lib/supabase/database.types.ts` are synchronized from the live schema.
 
 ## Security model
 
@@ -72,9 +74,9 @@ npm run build
 npm run verify:db
 ```
 
-`verify:db` executes the full migration in an isolated Postgres-compatible engine and tests profile creation, valid and invalid stream transitions, RLS coverage, and realtime publication.
+`verify:db` executes every migration in order in an isolated Postgres-compatible engine and tests profile creation, valid and invalid stream transitions, RLS coverage, and realtime publication.
 
-The browser suite verifies desktop/mobile rendering, navigation, likes, chat, auth setup, creator studio, and the stream-preflight API:
+The browser suite verifies desktop/mobile rendering, navigation, likes, chat, auth setup, creator studio, health, and the stream-preflight API in both demo and Supabase-connected modes:
 
 ```bash
 npm run build
