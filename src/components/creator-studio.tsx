@@ -10,6 +10,7 @@ import {
   Eye,
   Gauge,
   Lightbulb,
+  LoaderCircle,
   Mic,
   Radio,
   RotateCcw,
@@ -56,6 +57,9 @@ export function CreatorStudio() {
   const [enhance, setEnhance] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [streamId, setStreamId] = useState<string | null>(null);
+  const [backendMessage, setBackendMessage] = useState("");
 
   useEffect(() => {
     return () => mediaRef.current?.getTracks().forEach((track) => track.stop());
@@ -67,12 +71,19 @@ export function CreatorStudio() {
       if (countdown <= 1) {
         setIsLive(true);
         setCountdown(null);
+        if (streamId) {
+          void fetch(`/api/streams/${encodeURIComponent(streamId)}/transition`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "live" }),
+          });
+        }
       } else {
         setCountdown(countdown - 1);
       }
     }, 900);
     return () => window.clearTimeout(timeout);
-  }, [countdown]);
+  }, [countdown, streamId]);
 
   async function enableCamera() {
     setCameraStatus("requesting");
@@ -95,8 +106,45 @@ export function CreatorStudio() {
     }
   }
 
-  function stopBroadcast() {
+  async function prepareBroadcast() {
+    if (title.trim().length < 3) {
+      setBackendMessage("Add a clear title before starting.");
+      return;
+    }
+
+    setStarting(true);
+    setBackendMessage("");
+    try {
+      const response = await fetch("/api/streams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, topic, language: "English" }),
+      });
+      const result = await response.json() as { mode?: string; stream?: { id?: string }; error?: string };
+      if (!response.ok || !result.stream?.id) {
+        setBackendMessage(result.error ?? "The broadcast could not be prepared.");
+        return;
+      }
+
+      setStreamId(result.stream.id);
+      setBackendMessage(result.mode === "connected" ? "Secure stream record ready." : "Demo transport ready. Add Supabase settings to persist broadcasts.");
+      setCountdown(3);
+    } catch {
+      setBackendMessage("The broadcast service is temporarily unavailable.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function stopBroadcast() {
     setIsLive(false);
+    if (streamId) {
+      await fetch(`/api/streams/${encodeURIComponent(streamId)}/transition`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "ended" }),
+      }).catch(() => undefined);
+    }
   }
 
   const checkItems = [
@@ -280,11 +328,13 @@ export function CreatorStudio() {
                 <Radio className="text-[#ff3f63]" /> End test broadcast
               </Button>
             ) : (
-              <Button variant="live" size="lg" className="mt-4 w-full" onClick={() => setCountdown(3)} disabled={countdown !== null}>
-                <Radio /> Start test broadcast
+              <Button variant="live" size="lg" className="mt-4 w-full" onClick={prepareBroadcast} disabled={countdown !== null || starting}>
+                {starting ? <LoaderCircle className="animate-spin" /> : <Radio />} Prepare broadcast
               </Button>
             )}
-            <div className="mt-3 text-center text-[9px] leading-4 text-[#616779]">This milestone simulates the broadcast state. Live delivery connects in the next backend milestone.</div>
+            <div className="mt-3 text-center text-[9px] leading-4 text-[#737b91]" role="status">
+              {backendMessage || "Stream lifecycle is persisted when Supabase is connected; video transport remains in safe preview mode."}
+            </div>
           </div>
         </aside>
       </div>

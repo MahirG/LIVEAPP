@@ -3,6 +3,7 @@ import { BarChart3, CalendarClock, Edit3, Eye, Heart, Radio, Users } from "lucid
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
+import { AccountStatus } from "@/components/account-status";
 
 const stats = [
   { label: "Followers", value: "12.4K", icon: Users },
@@ -14,6 +15,7 @@ const stats = [
 export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-7 sm:px-6 lg:px-8 lg:py-10">
+      <div className="mb-5"><AccountStatus /></div>
       <div className="relative overflow-hidden rounded-[28px] border border-white/[.08] bg-[#11131a] p-6 sm:p-8">
         <div className="absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_18%_0%,rgba(93,115,255,.32),transparent_33%),radial-gradient(circle_at_85%_0%,rgba(204,88,155,.25),transparent_32%)]" />
         <div className="relative mt-16 flex flex-col gap-5 sm:flex-row sm:items-end">

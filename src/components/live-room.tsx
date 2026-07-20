@@ -20,13 +20,15 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { LiveScene } from "@/components/live-scene";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
 import type { LiveStream } from "@/lib/live-data";
+import { createClient } from "@/lib/supabase/client";
+import type { ChatMessageRow } from "@/lib/supabase/database.types";
 import { cn } from "@/lib/utils";
 
 type ChatMessage = {
@@ -55,6 +57,83 @@ export function LiveRoom({ stream }: { stream: LiveStream }) {
   const [chatOpen, setChatOpen] = useState(true);
   const [messages, setMessages] = useState(initialMessages);
   const [draft, setDraft] = useState("");
+  const [databaseStreamId, setDatabaseStreamId] = useState<string | null>(null);
+  const [chatNotice, setChatNotice] = useState("");
+  const [presenceCount, setPresenceCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const client = createClient();
+    if (!client) return;
+    const supabase = client;
+
+    let disposed = false;
+    let roomChannel: ReturnType<typeof supabase.channel> | null = null;
+
+    function initialsFor(name: string) {
+      return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "LI";
+    }
+
+    async function profileFor(authorId: string) {
+      const { data } = await supabase.from("profiles").select("display_name, username").eq("id", authorId).maybeSingle();
+      return data?.display_name || data?.username || "LIVE member";
+    }
+
+    async function connectRealtimeRoom() {
+      const { data: databaseStream } = await supabase.from("streams").select("id").eq("slug", stream.id).maybeSingle();
+      if (!databaseStream || disposed) return;
+
+      setDatabaseStreamId(databaseStream.id);
+      const { data: rows } = await supabase
+        .from("chat_messages")
+        .select("id, stream_id, author_id, body, moderation_state, reply_to_id, created_at")
+        .eq("stream_id", databaseStream.id)
+        .order("created_at", { ascending: true })
+        .limit(100);
+
+      if (rows && !disposed) {
+        const authorIds = [...new Set(rows.map((row) => row.author_id))];
+        const { data: profiles } = authorIds.length
+          ? await supabase.from("profiles").select("id, display_name, username").in("id", authorIds)
+          : { data: [] };
+        const names = new Map((profiles ?? []).map((profile) => [profile.id, profile.display_name || profile.username]));
+        setMessages(rows.map((row) => {
+          const name = names.get(row.author_id) ?? "LIVE member";
+          return { id: row.id, name, initials: initialsFor(name), message: row.body, accent: "bg-[#5d73ff]" };
+        }));
+      }
+
+      roomChannel = supabase
+        .channel(`stream:${databaseStream.id}`, { config: { presence: { key: crypto.randomUUID() } } })
+        .on("presence", { event: "sync" }, () => {
+          if (!roomChannel) return;
+          setPresenceCount(Object.keys(roomChannel.presenceState()).length);
+        })
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "chat_messages", filter: `stream_id=eq.${databaseStream.id}` },
+          async (payload) => {
+            const row = payload.new as ChatMessageRow;
+            const name = await profileFor(row.author_id);
+            if (disposed) return;
+            setMessages((current) => current.some((message) => message.id === row.id)
+              ? current
+              : [...current, { id: row.id, name, initials: initialsFor(name), message: row.body, accent: "bg-[#5d73ff]" }]);
+          },
+        )
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED" && roomChannel) {
+            setChatNotice("Realtime chat connected");
+            await roomChannel.track({ joined_at: new Date().toISOString() });
+          }
+        });
+    }
+
+    void connectRealtimeRoom();
+    return () => {
+      disposed = true;
+      if (roomChannel) void supabase.removeChannel(roomChannel);
+    };
+  }, [stream.id]);
 
   const formattedLikes = (likes / 1000).toFixed(1) + "K";
 
@@ -65,10 +144,33 @@ export function LiveRoom({ stream }: { stream: LiveStream }) {
     });
   }
 
-  function sendMessage(event: FormEvent) {
+  async function sendMessage(event: FormEvent) {
     event.preventDefault();
     const message = draft.trim();
     if (!message) return;
+
+    const supabase = createClient();
+    if (supabase && databaseStreamId) {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        setChatNotice("Sign in from your profile to participate in connected chat.");
+        return;
+      }
+
+      const { error } = await supabase.from("chat_messages").insert({
+        stream_id: databaseStreamId,
+        author_id: userData.user.id,
+        body: message,
+      });
+      if (error) {
+        setChatNotice(error.message);
+        return;
+      }
+
+      setDraft("");
+      return;
+    }
+
     setMessages((current) => [
       ...current,
       { id: current.length + 20, name: "You", initials: "MA", message, accent: "bg-[#5d73ff]" },
@@ -203,7 +305,7 @@ export function LiveRoom({ stream }: { stream: LiveStream }) {
           <div className="flex h-14 shrink-0 items-center border-b border-white/[.07] px-4">
             <div className="flex items-center gap-2 text-sm font-extrabold">
               Live chat
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-[#6f7581]"><Users className="size-3" /> 3.4K</span>
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-[#6f7581]"><Users className="size-3" /> {presenceCount === null ? "3.4K" : presenceCount}</span>
             </div>
             <button className="ml-auto flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[10px] font-bold text-[#8a909b] hover:bg-white/[.05] hover:text-white">
               Top chat <ChevronDown className="size-3" />
@@ -241,7 +343,7 @@ export function LiveRoom({ stream }: { stream: LiveStream }) {
               </button>
             </div>
             <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-[#5f6570]">
-              <span>Chat is translated to your language</span>
+              <span>{chatNotice || "Chat is translated to your language"}</span>
               <span>{draft.length}/240</span>
             </div>
           </form>

@@ -47,6 +47,14 @@ await desktopPage.screenshot({
   timeout: 15000,
 });
 
+const streamResponse = await desktopPage.request.post(`${baseUrl}/api/streams`, {
+  data: { title: "Browser verification live", topic: "Technology", language: "English" },
+});
+const streamResult = await streamResponse.json();
+if (streamResponse.status() !== 201 || streamResult.mode !== "demo" || !streamResult.stream?.id) {
+  failures.push("stream lifecycle: demo preflight API failed");
+}
+
 await Promise.all([
   desktopPage.waitForURL("**/live/addis-after-dark"),
   desktopPage.locator('a[href="/live/addis-after-dark"]').first().click(),
@@ -63,6 +71,14 @@ await desktopPage.getByRole("button", { name: "Send message" }).click();
 if (!(await desktopPage.getByText("The first milestone looks great!").isVisible())) failures.push("live room: chat send failed");
 await desktopPage.screenshot({
   path: resolve(artifacts, "live-room-desktop.png"),
+  animations: "disabled",
+  timeout: 15000,
+});
+await desktopPage.goto(`${baseUrl}/auth`, { waitUntil: "domcontentloaded" });
+await desktopPage.getByRole("heading", { name: "Show up as yourself. Stay in control." }).waitFor();
+if (!(await desktopPage.getByText("Backend connection ready").isVisible())) failures.push("auth: unconfigured setup state missing");
+await desktopPage.screenshot({
+  path: resolve(artifacts, "auth-desktop.png"),
   animations: "disabled",
   timeout: 15000,
 });
@@ -95,6 +111,6 @@ if (failures.length) {
 
 console.log(JSON.stringify({
   status: "passed",
-  checks: ["desktop home", "desktop live room", "like interaction", "chat interaction", "mobile home", "mobile studio"],
-  screenshots: ["artifacts/home-desktop.png", "artifacts/live-room-desktop.png", "artifacts/home-mobile.png", "artifacts/studio-mobile.png"],
+  checks: ["desktop home", "stream preflight API", "desktop live room", "like interaction", "chat interaction", "auth setup", "mobile home", "mobile studio"],
+  screenshots: ["artifacts/home-desktop.png", "artifacts/live-room-desktop.png", "artifacts/auth-desktop.png", "artifacts/home-mobile.png", "artifacts/studio-mobile.png"],
 }, null, 2));
